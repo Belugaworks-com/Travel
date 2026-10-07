@@ -27,6 +27,8 @@ export const AIRLINES: Airline[] = [
   { code: "KL", name: "KLM", alliance: "skyteam" },
   { code: "EK", name: "Emirates", alliance: "none" },
   { code: "EI", name: "Aer Lingus", alliance: "none" },
+  { code: "VS", name: "Virgin Atlantic", alliance: "skyteam" },
+  { code: "B6", name: "JetBlue", alliance: "none" },
 ];
 
 const AIRCRAFT_CODES: Record<string, string> = {

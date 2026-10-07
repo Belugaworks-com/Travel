@@ -264,3 +264,34 @@ export function checkInAdvice(p: number, boarding: StaffFareBreakdown["boarding"
   }
   return advice;
 }
+
+export interface ReportedLoads {
+  /** Seats your staff portal shows as open in the cabin (negative if oversold). */
+  openSeats: number;
+  /** Non-revs listed ahead of you (higher priority or earlier check-in). */
+  listedAhead: number;
+}
+
+/**
+ * Odds from the loads an airline's staff portal shows. Much better than the
+ * model: the only uncertainty left is late no-shows, go-shows and
+ * reaccommodated passengers, so the curve is steep around a zero margin.
+ */
+export function oddsFromReportedLoads({ openSeats, listedAhead }: ReportedLoads) {
+  const margin = openSeats - listedAhead;
+  // At margin 0 you clear only if someone no-shows: roughly a coin flip on a busy flight.
+  const p = 1 / (1 + Math.exp(-(margin + 0.3) / 1.6));
+  return Math.min(0.97, Math.max(0.03, p));
+}
+
+/**
+ * Nudge a modelled load factor using the fare: when a flight prices near the
+ * top of its usual range, revenue management sees it filling up.
+ */
+export function adjustLoadForPrice(loadFactor: number, price: number, typicalRange: [number, number]) {
+  const [lo, hi] = typicalRange;
+  if (!(hi > lo)) return loadFactor;
+  const position = Math.min(2, Math.max(-1, (price - lo) / (hi - lo)));
+  const adjust = Math.min(0.06, Math.max(-0.06, (position - 0.5) * 0.08));
+  return Math.min(1.04, Math.max(0.35, loadFactor + adjust));
+}

@@ -36,6 +36,21 @@ those numbers appear.
 | Cabin layouts                | Typical configuration per type   | Same                        |
 | Basemap                      | Bundled Natural Earth countries (no tile server) |             |
 
+## Planner
+
+`/planner` puts flights, stays, activities, transfers and notes for a trip on
+one timeline (agenda, week and month views; drag an item to another day).
+Times are local to each place, with zones resolved per airport. It checks the
+plan as you go: impossible or tight connections (longer buffers on standby),
+landing in one city and leaving from another, plans that overlap a flight,
+nights away with nowhere to stay, standby flights without a backup, and
+moved flights whose price is stale. Export the trip as `.ics` or add single
+items to Google Calendar.
+
+For standby flights you can save backup flights (ranked by your odds, same
+day or next) and switch to one in a click, and enter the real loads from your
+staff portal for exact odds. Trips are stored in the browser for now.
+
 ## Staff travel engine
 
 `src/lib/staff-travel/engine.ts`
@@ -50,6 +65,8 @@ those numbers appear.
   interline (partner, then non-partner) travel.
 - **Standby odds** turn estimated open seats, no-shows and the queue ahead of
   you into a probability, capped at 3–97% because the inputs are estimates.
+  Loads are nudged up when a flight prices high for the route. Loads entered
+  from a staff portal (open seats, non-revs ahead) replace the estimate.
 
 All values live in `StaffTravelRules` so each employer's rules can be swapped in.
 
@@ -60,6 +77,7 @@ All values live in `StaffTravelRules` so each employer's rules can be swapped in
 | `GET /api/flights/search`         | Offers for `from`, `to`, `date`, `cabin`, filters |
 | `GET /api/flights/destinations`   | Every nonstop / one-stop destination with fares   |
 | `GET /api/flights/route-info`     | Carriers, aircraft, cabin seats, loads, standby   |
+| `GET /api/flights/backups`        | Alternatives to a standby flight, ranked by odds  |
 | `POST /api/staff-rates/calculate` | Commercial vs ID50 / ID90 / ZED breakdown         |
 
 ## Database

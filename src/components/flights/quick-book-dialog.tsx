@@ -2,6 +2,7 @@
 
 import { useQuery } from "@tanstack/react-query";
 import { ExternalLink } from "lucide-react";
+import { useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import {
@@ -13,31 +14,20 @@ import {
 } from "@/components/ui/dialog";
 import { Skeleton } from "@/components/ui/skeleton";
 import { getJson } from "@/hooks/use-flights";
-import type { RouteInfo } from "@/lib/api/route-info";
+import { AddToTrip } from "@/components/planner/add-to-trip";
 import type { StaffRateRequest } from "@/lib/api/schemas";
-import { getAirline } from "@/lib/data/network";
-import {
-  oddsBand,
-  type StaffFareBreakdown,
-  type StandbyPriority,
-} from "@/lib/staff-travel/engine";
+import type { ReportedLoads, StaffFareBreakdown } from "@/lib/staff-travel/engine";
+import { offerOdds, sameAlliance } from "@/lib/staff-travel/offer-odds";
 import { useSkyPlan } from "@/lib/store";
-import { CABIN_LABEL, FARE_MODE_LABEL, type FareMode, type FlightOffer } from "@/lib/types";
+import { CABIN_LABEL, FARE_MODE_LABEL, type DataSource, type FareMode, type FlightOffer } from "@/lib/types";
 import { cn, formatDuration, formatMoney } from "@/lib/utils";
 
-type RateResult = StaffFareBreakdown & {
-  priority?: StandbyPriority;
-  odds?: number | null;
-  advice?: string[];
-};
+import { BackupList, offerKey, useBackups } from "./backup-list";
+import { StandbySummary } from "./standby-panel";
+
+type RateResult = StaffFareBreakdown;
 
 const MODES: FareMode[] = ["commercial", "id50", "id90", "zed"];
-
-const ODDS_STYLE = {
-  good: "bg-good",
-  fair: "bg-warn",
-  poor: "bg-bad",
-} as const;
 
 function googleFlightsUrl(offer: FlightOffer) {
   const first = offer.segments[0];
@@ -49,20 +39,42 @@ function googleFlightsUrl(offer: FlightOffer) {
 export function QuickBookDialog({
   offer,
   distanceMiles,
-  routeInfo,
+  typicalRange,
+  source,
+  date,
   onOpenChange,
 }: {
   offer: FlightOffer;
   distanceMiles: number;
-  routeInfo?: RouteInfo;
+  typicalRange?: [number, number];
+  source: DataSource;
+  date: string;
   onOpenChange: (open: boolean) => void;
 }) {
   const fareMode = useSkyPlan((s) => s.fareMode);
   const profile = useSkyPlan((s) => s.staffProfile);
   const first = offer.segments[0];
   const last = offer.segments[offer.segments.length - 1];
+  const [reportedLoads, setReportedLoads] = useState<Record<string, ReportedLoads>>({});
+  const [backups, setBackups] = useState<FlightOffer[]>([]);
+  const standby = fareMode === "id90" || fareMode === "zed";
+  const odds = standby
+    ? offerOdds(offer, { mode: fareMode, cabin: offer.cabin, profile, typicalRange, reportedLoads })
+    : 1;
+  const backupQuery = useBackups({
+    from: first.from,
+    to: last.to,
+    date,
+    cabin: offer.cabin,
+    mode: fareMode,
+    exclude: offer.segments.map((s) => s.flightNumber),
+    enabled: standby,
+  });
+  const toggleBackup = (o: FlightOffer) =>
+    setBackups((list) =>
+      list.some((b) => offerKey(b) === offerKey(o)) ? list.filter((b) => offerKey(b) !== offerKey(o)) : [...list, o],
+    );
 
-  const operator = routeInfo?.operators.find((op) => op.airline === first.airline);
   const body: StaffRateRequest = {
     fare: offer.fare,
     distanceMiles,
@@ -71,11 +83,9 @@ export function QuickBookDialog({
     standby: {
       profile,
       operatingAirline: first.airline,
-      sameAlliance:
-        getAirline(first.airline)?.alliance !== "none" &&
-        getAirline(first.airline)?.alliance === getAirline(profile.airline)?.alliance,
+      sameAlliance: sameAlliance(profile.airline, first.airline),
       aircraft: first.aircraft,
-      loadFactor: operator?.loadFactor[offer.cabin] ?? 0.82,
+      loadFactor: 0.82,
     },
   };
 
@@ -90,7 +100,6 @@ export function QuickBookDialog({
   });
 
   const results = rates.data?.results;
-  const current = results?.find((r) => r.mode === fareMode);
   const rows: { label: string; value: (r: RateResult) => number; negative?: boolean }[] = [
     { label: "Published base fare", value: (r) => r.publishedBaseFare },
     { label: "Staff discount", value: (r) => r.discount, negative: true },
@@ -193,44 +202,40 @@ export function QuickBookDialog({
 
         {rates.isError && <p className="text-sm text-bad">Couldn&apos;t calculate staff fares: {rates.error.message}</p>}
 
-        {current && current.boarding === "standby" && current.priority && (
-          <section aria-labelledby="standby-h" className="space-y-2 rounded-lg border p-3">
-            <div className="flex items-start justify-between gap-3">
-              <div>
-                <h3 id="standby-h" className="text-sm font-semibold">
-                  {current.priority.label}
-                </h3>
-                <p className="text-xs text-muted-foreground">{current.priority.detail}</p>
-              </div>
-              {typeof current.odds === "number" && (
-                <p className="shrink-0 text-right">
-                  <span className="block text-xl font-semibold tabular-nums">{Math.round(current.odds * 100)}%</span>
-                  <span className="text-[11px] text-muted-foreground">est. chance to clear</span>
-                </p>
-              )}
+        {standby && (
+          <StandbySummary
+            offer={offer}
+            mode={fareMode}
+            cabin={offer.cabin}
+            typicalRange={typicalRange}
+            reportedLoads={reportedLoads}
+            onReportedLoadsChange={setReportedLoads}
+          />
+        )}
+
+        {standby && (
+          <section aria-labelledby="backups-h" className="space-y-2">
+            <div className="flex items-baseline justify-between gap-2">
+              <h3 id="backups-h" className="text-sm font-semibold">
+                Backup flights
+              </h3>
+              <span className="text-xs text-muted-foreground">
+                {odds < 0.7 ? "Odds are tight: keep a plan B" : "Ranked by your chances"}
+              </span>
             </div>
-            {typeof current.odds === "number" && (
-              <div
-                className="h-1.5 overflow-hidden rounded-full bg-muted"
-                role="meter"
-                aria-label="Estimated standby odds"
-                aria-valuemin={0}
-                aria-valuemax={100}
-                aria-valuenow={Math.round(current.odds * 100)}
-              >
-                <div
-                  className={cn("h-full rounded-full", ODDS_STYLE[oddsBand(current.odds)])}
-                  style={{ width: `${Math.max(4, current.odds * 100)}%` }}
-                />
-              </div>
-            )}
-            <ul className="list-disc space-y-0.5 pl-4 text-xs text-muted-foreground">
-              {current.advice?.map((a) => (
-                <li key={a}>{a}</li>
-              ))}
-            </ul>
+            <BackupList query={backupQuery} selected={backups} onToggle={toggleBackup} />
           </section>
         )}
+
+        <AddToTrip
+          offer={offer}
+          fareMode={fareMode}
+          source={source}
+          reportedLoads={Object.keys(reportedLoads).length ? reportedLoads : undefined}
+          backups={backups}
+          // The explore page stays mounted in the background; don't leave this dialog open there.
+          onNavigate={() => onOpenChange(false)}
+        />
 
         <div className="flex flex-col-reverse gap-2 sm:flex-row sm:items-center sm:justify-between">
           <p className="text-xs text-muted-foreground">

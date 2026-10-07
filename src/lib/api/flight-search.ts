@@ -1,6 +1,9 @@
 import "server-only";
 
+import { cacheLife } from "next/cache";
+
 import type { FlightSearchQuery } from "@/lib/api/schemas";
+import { getAirport } from "@/lib/data/airports";
 import { getAirline, getConnectingHubs, getOperations } from "@/lib/data/network";
 import {
   classifyFare,
@@ -12,6 +15,7 @@ import {
   samplePriceInsights,
 } from "@/lib/pricing/sample-fares";
 import { seeded } from "@/lib/seeded";
+import { instantToLocal, localToInstant } from "@/lib/time";
 import type {
   Cabin,
   FareLevel,
@@ -130,9 +134,14 @@ function normalizeSerp(body: SerpResponse, cabin: Cabin, date: Date): FlightSear
   return { source: "live", offers, insights };
 }
 
-async function searchSerpApi(q: FlightSearchQuery): Promise<FlightSearchResult | null> {
-  const key = process.env.SERPAPI_API_KEY;
-  if (!key) return null;
+/**
+ * One SerpApi search, cached for an hour so the route view, backups and
+ * planner share a single paid search. Throws on failure so errors aren't cached.
+ */
+async function fetchSerpApi(q: FlightSearchQuery): Promise<FlightSearchResult> {
+  "use cache";
+  cacheLife("hours");
+
   const url = new URL("https://serpapi.com/search.json");
   const params: Record<string, string | undefined> = {
     engine: "google_flights",
@@ -148,16 +157,20 @@ async function searchSerpApi(q: FlightSearchQuery): Promise<FlightSearchResult |
     stops: q.maxStops === undefined ? undefined : String(q.maxStops + 1),
     include_airlines: q.airline,
     max_price: q.maxPrice ? String(Math.floor(q.maxPrice)) : undefined,
-    api_key: key,
+    api_key: process.env.SERPAPI_API_KEY,
   };
   for (const [k, v] of Object.entries(params)) if (v) url.searchParams.set(k, v);
 
+  const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
+  const body = (await res.json()) as SerpResponse;
+  if (!res.ok || body.error) throw new Error(`SerpApi: ${body.error ?? res.status}`);
+  return normalizeSerp(body, q.cabin, new Date(`${q.date}T00:00:00Z`));
+}
+
+async function searchSerpApi(q: FlightSearchQuery): Promise<FlightSearchResult | null> {
+  if (!process.env.SERPAPI_API_KEY) return null;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(20_000) });
-    if (!res.ok) return null;
-    const body = (await res.json()) as SerpResponse;
-    if (body.error) return null;
-    return normalizeSerp(body, q.cabin, new Date(`${q.date}T00:00:00Z`));
+    return await fetchSerpApi(q);
   } catch {
     return null;
   }
@@ -170,9 +183,10 @@ async function searchSerpApi(q: FlightSearchQuery): Promise<FlightSearchResult |
 const CRUISE_MPH = 490;
 const TAXI_MINUTES = 35;
 
-function sampleSegment(airline: string, aircraft: string, from: string, to: string, depart: Date): FlightSegment {
+/** A sample leg departing at `departMs`; times are local to each airport, like SerpApi's. */
+function sampleSegment(airline: string, aircraft: string, from: string, to: string, departMs: number): FlightSegment {
   const minutes = Math.round((routeDistance(from, to) / CRUISE_MPH) * 60 + TAXI_MINUTES);
-  const arrive = new Date(depart.getTime() + minutes * 60_000);
+  const arriveMs = departMs + minutes * 60_000;
   return {
     from,
     to,
@@ -180,17 +194,18 @@ function sampleSegment(airline: string, aircraft: string, from: string, to: stri
     airlineName: getAirline(airline)?.name ?? airline,
     flightNumber: sampleFlightNumber(airline, from, to),
     aircraft,
-    // Sample times are expressed in UTC; live SerpApi results use local times.
-    departAt: depart.toISOString().slice(0, 16),
-    arriveAt: arrive.toISOString().slice(0, 16),
+    departAt: instantToLocal(departMs, getAirport(from)!.tz),
+    arriveAt: instantToLocal(arriveMs, getAirport(to)!.tz),
     durationMinutes: minutes,
   };
 }
 
-function departureTime(date: string, key: string) {
+/** A stable local departure time between 06:00 and 21:55 at the origin. */
+function departureTime(date: string, from: string, key: string) {
   const hour = 6 + Math.floor(seeded(key) * 16);
   const minute = Math.floor(seeded(`${key}:m`) * 12) * 5;
-  return new Date(`${date}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}:00Z`);
+  const local = `${date}T${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  return localToInstant(local, getAirport(from)!.tz);
 }
 
 function sampleSearch(q: FlightSearchQuery): FlightSearchResult {
@@ -198,7 +213,7 @@ function sampleSearch(q: FlightSearchQuery): FlightSearchResult {
   const offers: FlightOffer[] = [];
 
   for (const op of getOperations(q.from, q.to)) {
-    const seg = sampleSegment(op.airline, op.aircraft, q.from, q.to, departureTime(q.date, `${op.airline}${q.from}${q.to}`));
+    const seg = sampleSegment(op.airline, op.aircraft, q.from, q.to, departureTime(q.date, q.from, `${op.airline}${q.from}${q.to}`));
     const fare = sampleFareQuote(q.from, q.to, q.cabin, day, op.airline);
     offers.push({
       id: `sample-${seg.flightNumber}-${q.date}`,
@@ -218,9 +233,9 @@ function sampleSearch(q: FlightSearchQuery): FlightSearchResult {
     const leg2 =
       getOperations(via, q.to).find((op) => op.airline === leg1.airline) ??
       getOperations(via, q.to)[0];
-    const s1 = sampleSegment(leg1.airline, leg1.aircraft, q.from, via, departureTime(q.date, `${leg1.airline}${q.from}${via}`));
+    const s1 = sampleSegment(leg1.airline, leg1.aircraft, q.from, via, departureTime(q.date, q.from, `${leg1.airline}${q.from}${via}`));
     const connect = 70 + Math.floor(seeded(`cx:${via}:${q.date}`) * 160);
-    const s2 = sampleSegment(leg2.airline, leg2.aircraft, via, q.to, new Date(new Date(`${s1.arriveAt}:00Z`).getTime() + connect * 60_000));
+    const s2 = sampleSegment(leg2.airline, leg2.aircraft, via, q.to, localToInstant(s1.arriveAt, getAirport(via)!.tz) + connect * 60_000);
     // Connecting fares price as a through fare, a little below the sum of legs.
     const price = Math.round(
       0.82 *

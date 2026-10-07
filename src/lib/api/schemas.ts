@@ -57,6 +57,13 @@ export const staffRateRequest = z.object({
       sameAlliance: z.boolean().default(false),
       aircraft: z.string().optional(),
       loadFactor: z.number().min(0).max(1.1),
+      /** Loads from the airline's staff portal; when given, they replace the model. */
+      reportedLoads: z
+        .object({
+          openSeats: z.number().int().min(-99).max(999),
+          listedAhead: z.number().int().min(0).max(999),
+        })
+        .optional(),
     })
     .optional(),
 });

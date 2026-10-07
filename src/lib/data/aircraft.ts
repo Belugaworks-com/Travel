@@ -86,3 +86,62 @@ export function totalSeats(config: CabinConfig) {
     config.first + config.business + config.premium_economy + config.economy
   );
 }
+
+/** Generic family names (as Google Flights reports them) -> most common variant. */
+const FAMILY_DEFAULT: [RegExp, string][] = [
+  [/^airbus a380/, "Airbus A380-800"],
+  [/^airbus a350-?1000/, "Airbus A350-1000"],
+  [/^airbus a350/, "Airbus A350-900"],
+  [/^airbus a340/, "Airbus A340-300"],
+  [/^airbus a330-?900|^airbus a330neo/, "Airbus A330-900"],
+  [/^airbus a330-?200/, "Airbus A330-200"],
+  [/^airbus a330/, "Airbus A330-300"],
+  [/^airbus a321 ?xlr/, "Airbus A321XLR"],
+  [/^airbus a321 ?neo|^airbus a321 ?lr/, "Airbus A321neo"],
+  [/^airbus a321/, "Airbus A321"],
+  [/^airbus a320 ?neo/, "Airbus A320neo"],
+  [/^airbus a32\d|^airbus a319|^airbus a318/, "Airbus A320"],
+  [/^airbus a220|^bombardier cs300/, "Airbus A220-300"],
+  [/^boeing 747/, "Boeing 747-8"],
+  [/^boeing 777-?300|^boeing 777-?9/, "Boeing 777-300ER"],
+  [/^boeing 777-?200 ?lr/, "Boeing 777-200LR"],
+  [/^boeing 777-?200 ?er/, "Boeing 777-200ER"],
+  [/^boeing 777/, "Boeing 777-300ER"],
+  [/^boeing 787-?10/, "Boeing 787-10"],
+  [/^boeing 787-?8/, "Boeing 787-8"],
+  [/^boeing 787/, "Boeing 787-9"],
+  [/^boeing 767-?400/, "Boeing 767-400ER"],
+  [/^boeing 767/, "Boeing 767-300ER"],
+  [/^boeing 757/, "Boeing 757-200"],
+  [/^boeing 737 ?max ?9/, "Boeing 737 MAX 9"],
+  [/^boeing 737 ?max/, "Boeing 737 MAX 8"],
+  [/^boeing 737-?900/, "Boeing 737-900ER"],
+  [/^boeing 737/, "Boeing 737-800"],
+  [/^embraer (e)?19\d/, "Embraer E195-E2"],
+  [/^embraer (e)?1[78]\d/, "Embraer E175"],
+];
+
+const normalize = (name: string) =>
+  name
+    .toLowerCase()
+    .replace(/\b(passenger|jet|\(sharklets\)|winglets)\b/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+
+/**
+ * Best catalog match for an aircraft name from a schedule or fare source.
+ * `exact` is false when only the family matched (e.g. "Boeing 777"), so the
+ * cabin layout is the family's most common configuration.
+ */
+export function matchAircraft(name: string | null | undefined): { aircraft: Aircraft; exact: boolean } | null {
+  if (!name) return null;
+  const direct = byName.get(name);
+  if (direct) return { aircraft: direct, exact: true };
+  const n = normalize(name);
+  const exact = LIST.find((a) => normalize(a.name) === n);
+  if (exact) return { aircraft: exact, exact: true };
+  for (const [pattern, variant] of FAMILY_DEFAULT) {
+    if (pattern.test(n)) return { aircraft: byName.get(variant)!, exact: false };
+  }
+  return null;
+}

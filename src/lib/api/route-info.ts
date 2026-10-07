@@ -2,6 +2,7 @@ import "server-only";
 
 import { cacheLife } from "next/cache";
 
+import { operatingCarriers, type AviationstackFlight } from "@/lib/api/operating-carriers";
 import { getAircraft } from "@/lib/data/aircraft";
 import { getAirport } from "@/lib/data/airports";
 import {
@@ -49,16 +50,6 @@ interface LiveCarrier {
   flightNumber: string;
 }
 
-interface AviationstackFlight {
-  airline?: { iata?: string | null; name?: string | null } | null;
-  flight?: {
-    iata?: string | null;
-    codeshared?: { airline_iata?: string; airline_name?: string; flight_iata?: string } | null;
-  } | null;
-}
-
-const titleCase = (s: string) => s.replace(/\b\w/g, (c) => c.toUpperCase());
-
 /**
  * Airlines operating a route, from Aviationstack's flights endpoint (the
  * routes endpoint needs a paid plan). Codeshares are folded into the
@@ -79,21 +70,11 @@ async function fetchOperatingCarriers(from: string, to: string): Promise<LiveCar
   if (!res.ok || body.error || !body.data) {
     throw new Error(`Aviationstack: ${body.error?.code ?? res.status}`);
   }
-
-  const carriers = new Map<string, LiveCarrier & { flights: number }>();
-  for (const row of body.data) {
-    const cs = row.flight?.codeshared;
-    const code = (cs?.airline_iata ?? row.airline?.iata ?? "").toUpperCase();
-    if (!/^[A-Z0-9]{2}$/.test(code)) continue;
-    const name = cs?.airline_name ?? row.airline?.name ?? code;
-    const flightNumber = (cs?.flight_iata ?? row.flight?.iata ?? code).toUpperCase();
-    const entry = carriers.get(code);
-    if (entry) entry.flights++;
-    else carriers.set(code, { airline: code, airlineName: titleCase(name), flightNumber, flights: 1 });
-  }
-  return [...carriers.values()]
-    .sort((a, b) => b.flights - a.flights)
-    .map(({ airline, airlineName, flightNumber }) => ({ airline, airlineName, flightNumber }));
+  return operatingCarriers(body.data).map(({ airline, airlineName, flightNumber }) => ({
+    airline,
+    airlineName,
+    flightNumber,
+  }));
 }
 
 /** Live carriers, or null without a key or when the request fails. */

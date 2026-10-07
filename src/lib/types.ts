@@ -38,6 +38,8 @@ export interface Airport {
   country: string;
   lat: number;
   lon: number;
+  /** IANA time zone. */
+  tz: string;
 }
 
 export interface Airline {

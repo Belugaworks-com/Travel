@@ -5,6 +5,8 @@ import type { Cabin, FareQuote } from "@/lib/types";
 
 import {
   DEFAULT_RULES,
+  adjustLoadForPrice,
+  oddsFromReportedLoads,
   calculateStaffFare,
   oddsBand,
   standbyOdds,
@@ -121,5 +123,34 @@ describe("standbyOdds", () => {
     expect(oddsBand(0.85)).toBe("good");
     expect(oddsBand(0.5)).toBe("fair");
     expect(oddsBand(0.2)).toBe("poor");
+  });
+});
+
+describe("oddsFromReportedLoads", () => {
+  it("is high with seats to spare and low when the list exceeds open seats", () => {
+    expect(oddsFromReportedLoads({ openSeats: 12, listedAhead: 3 })).toBeGreaterThan(0.95);
+    expect(oddsFromReportedLoads({ openSeats: 2, listedAhead: 8 })).toBeLessThan(0.05);
+  });
+
+  it("is a near coin flip when open seats equal the list ahead", () => {
+    const p = oddsFromReportedLoads({ openSeats: 4, listedAhead: 4 });
+    expect(p).toBeGreaterThan(0.4);
+    expect(p).toBeLessThan(0.65);
+  });
+
+  it("handles oversold flights", () => {
+    expect(oddsFromReportedLoads({ openSeats: -5, listedAhead: 0 })).toBeLessThan(0.06);
+  });
+});
+
+describe("adjustLoadForPrice", () => {
+  it("raises loads for expensive flights and lowers them for cheap ones", () => {
+    expect(adjustLoadForPrice(0.8, 900, [500, 700])).toBeGreaterThan(0.8);
+    expect(adjustLoadForPrice(0.8, 400, [500, 700])).toBeLessThan(0.8);
+    expect(adjustLoadForPrice(0.8, 600, [500, 700])).toBeCloseTo(0.8);
+  });
+
+  it("ignores a degenerate range", () => {
+    expect(adjustLoadForPrice(0.8, 900, [500, 500])).toBe(0.8);
   });
 });

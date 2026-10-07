@@ -1,8 +1,9 @@
 import { badRequest, staffRateRequest } from "@/lib/api/schemas";
-import { getAircraft } from "@/lib/data/aircraft";
+import { matchAircraft } from "@/lib/data/aircraft";
 import {
   calculateStaffFare,
   checkInAdvice,
+  oddsFromReportedLoads,
   standbyOdds,
   standbyPriority,
 } from "@/lib/staff-travel/engine";
@@ -35,8 +36,10 @@ export async function POST(request: Request) {
       standby.operatingAirline,
       standby.sameAlliance,
     );
-    const aircraft = standby.aircraft ? getAircraft(standby.aircraft) : undefined;
-    const odds = aircraft
+    const aircraft = matchAircraft(standby.aircraft)?.aircraft;
+    const odds = standby.reportedLoads
+      ? oddsFromReportedLoads(standby.reportedLoads)
+      : aircraft
       ? standbyOdds({
           config: aircraft.config,
           loadFactor: Object.fromEntries(

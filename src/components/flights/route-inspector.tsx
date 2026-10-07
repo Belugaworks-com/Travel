@@ -1,6 +1,7 @@
 "use client";
 
-import type { RouteInfo, RouteOperator } from "@/lib/api/route-info";
+import type { RouteInfo } from "@/lib/api/route-info";
+import type { EnrichedOperator } from "@/lib/route-insights";
 import { getAirport } from "@/lib/data/airports";
 import { oddsBand, type OddsBand } from "@/lib/staff-travel/engine";
 import { cn } from "@/lib/utils";
@@ -15,7 +16,7 @@ const BAND = {
 
 const pct = (x: number) => `${Math.round(x * 100)}%`;
 
-function CabinSeats({ op }: { op: RouteOperator }) {
+function CabinSeats({ op }: { op: EnrichedOperator }) {
   if (!op.config) return <p className="text-xs text-muted-foreground">Cabin layout not published.</p>;
   const c = op.config;
   const rows = [
@@ -39,7 +40,7 @@ function CabinSeats({ op }: { op: RouteOperator }) {
   );
 }
 
-function Operator({ op }: { op: RouteOperator }) {
+function Operator({ op }: { op: EnrichedOperator }) {
   const band = op.standbyOdds === null ? null : BAND[oddsBand(op.standbyOdds)];
   return (
     <li className="space-y-2 px-4 py-3">
@@ -48,7 +49,10 @@ function Operator({ op }: { op: RouteOperator }) {
           <p className="truncate text-sm font-medium">
             {op.airlineName} <span className="font-mono text-xs text-muted-foreground">{op.flightNumber}</span>
           </p>
-          <p className="truncate text-xs text-muted-foreground">{op.aircraft}</p>
+          <p className="truncate text-xs text-muted-foreground">
+            {op.aircraft}
+            {op.approximateLayout && <span> · typical layout</span>}
+          </p>
         </div>
         <div className="shrink-0 text-right text-xs">
           <p className="tabular-nums">
@@ -67,8 +71,8 @@ function Operator({ op }: { op: RouteOperator }) {
   );
 }
 
-export function RouteInspector({ info }: { info: RouteInfo }) {
-  if (info.operators.length === 0) {
+export function RouteInspector({ info, operators }: { info: RouteInfo; operators: EnrichedOperator[] }) {
+  if (operators.length === 0) {
     return (
       <section aria-labelledby="connections-h" className="px-4 py-3">
         <h3 id="connections-h" className="text-sm font-semibold">
@@ -89,29 +93,34 @@ export function RouteInspector({ info }: { info: RouteInfo }) {
     );
   }
 
-  const band = info.standbyScore === null ? null : BAND[oddsBand(info.standbyScore)];
+  const odds = operators.map((op) => op.standbyOdds).filter((x): x is number => x !== null);
+  const score = odds.length ? odds.reduce((a, b) => a + b, 0) / odds.length : null;
+  const typicalLoad = operators.length
+    ? operators.reduce((a, op) => a + op.loadFactor.economy, 0) / operators.length
+    : null;
+  const band = score === null ? null : BAND[oddsBand(score)];
   return (
     <section aria-labelledby="inspector-h">
       <div className="flex items-end justify-between gap-3 px-4 pt-4 pb-2">
         <h3 id="inspector-h" className="text-sm font-semibold">
           Route inspector
         </h3>
-        {band && info.typicalLoadFactor !== null && (
+        {band && typicalLoad !== null && (
           <p className={cn("text-xs", band.text)}>
-            {band.label} standby odds · typical load {pct(Math.min(1, info.typicalLoadFactor))}
+            {band.label} standby odds · typical load {pct(Math.min(1, typicalLoad))}
           </p>
         )}
       </div>
       <ul className="divide-y border-y">
-        {info.operators.map((op) => (
+        {operators.map((op) => (
           <Operator key={op.airline} op={op} />
         ))}
       </ul>
       <div className="px-4 py-3">
         <SourceNote
           source={info.source}
-          live="Carriers from Aviationstack. Loads and cabin layouts are estimates."
-          sample="Sample schedule. Loads, standby odds and cabin layouts are estimates."
+          live={`Carriers from Aviationstack${operators.some((o) => o.liveAircraft) ? ", aircraft from Google Flights" : ""}. Loads and standby odds are estimates; enter real loads when you book.`}
+          sample={`Sample schedule${operators.some((o) => o.liveAircraft) ? "; aircraft from Google Flights" : ""}. Loads and standby odds are estimates; enter real loads when you book.`}
         />
       </div>
     </section>

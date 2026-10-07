@@ -1,12 +1,13 @@
 "use client";
 
 import { ArrowLeft, ArrowRight } from "lucide-react";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { useFlightSearch, useRouteInfo } from "@/hooks/use-flights";
 import { getAirport } from "@/lib/data/airports";
+import { enrichOperators } from "@/lib/route-insights";
 import { zedZoneFor } from "@/lib/staff-travel/engine";
 import { priceIn } from "@/lib/staff-travel/price";
 import { useOpenRoute, useSkyPlan } from "@/lib/store";
@@ -98,6 +99,10 @@ export function RouteDetail() {
   const search = useFlightSearch(from, to, date, cabin);
   const info = useRouteInfo(from, to, date);
   const [booking, setBooking] = useState<FlightOffer | null>(null);
+  const operators = useMemo(
+    () => (info.data ? enrichOperators(info.data, search.data?.offers, search.data?.insights) : []),
+    [info.data, search.data],
+  );
 
   const a = getAirport(from);
   const b = getAirport(to);
@@ -193,7 +198,7 @@ export function RouteDetail() {
         ) : info.isError ? (
           <p className="px-4 py-3 text-sm text-bad">Couldn&apos;t load route details: {info.error.message}</p>
         ) : (
-          <RouteInspector info={info.data} />
+          <RouteInspector info={info.data} operators={operators} />
         )}
       </div>
 
@@ -201,7 +206,9 @@ export function RouteDetail() {
         <QuickBookDialog
           offer={booking}
           distanceMiles={distance}
-          routeInfo={info.data}
+          typicalRange={search.data?.insights?.typicalRange}
+          source={search.data?.source ?? "sample"}
+          date={date}
           onOpenChange={(open) => !open && setBooking(null)}
         />
       )}
