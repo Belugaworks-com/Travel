@@ -1,0 +1,176 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "maplibre-gl/dist/maplibre-gl.css";
+
+@custom-variant dark (&:is(.dark *));
+
+/*
+ * One neutral family (zinc) + one accent (signal amber, used for selection,
+ * arcs and primary actions). Fare levels use the semantic good/warn/bad tokens.
+ * Radius scale: controls and cards share --radius.
+ */
+:root {
+  --radius: 0.625rem;
+  --background: oklch(0.985 0.002 260);
+  --foreground: oklch(0.21 0.01 270);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.21 0.01 270);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.21 0.01 270);
+  --primary: oklch(0.21 0.01 270);
+  --primary-foreground: oklch(0.985 0 0);
+  --secondary: oklch(0.955 0.004 270);
+  --secondary-foreground: oklch(0.25 0.01 270);
+  --muted: oklch(0.955 0.004 270);
+  --muted-foreground: oklch(0.5 0.012 270);
+  --accent: oklch(0.955 0.004 270);
+  --accent-foreground: oklch(0.25 0.01 270);
+  --border: oklch(0.91 0.005 270);
+  --input: oklch(0.91 0.005 270);
+  --ring: oklch(0.72 0.14 70);
+  --destructive: oklch(0.58 0.2 27);
+
+  --signal: oklch(0.72 0.15 65);
+  --signal-foreground: oklch(0.22 0.04 60);
+  --good: oklch(0.56 0.13 155);
+  --warn: oklch(0.68 0.14 80);
+  --bad: oklch(0.58 0.19 27);
+
+  --map-ocean: oklch(0.94 0.008 250);
+  --map-land: oklch(0.995 0.001 260);
+  --map-border: oklch(0.86 0.006 260);
+  --map-graticule: oklch(0.9 0.006 250);
+}
+
+.dark {
+  --background: oklch(0.16 0.006 270);
+  --foreground: oklch(0.96 0.003 270);
+  --card: oklch(0.2 0.007 270);
+  --card-foreground: oklch(0.96 0.003 270);
+  --popover: oklch(0.2 0.007 270);
+  --popover-foreground: oklch(0.96 0.003 270);
+  --primary: oklch(0.96 0.003 270);
+  --primary-foreground: oklch(0.2 0.007 270);
+  --secondary: oklch(0.26 0.007 270);
+  --secondary-foreground: oklch(0.96 0.003 270);
+  --muted: oklch(0.26 0.007 270);
+  --muted-foreground: oklch(0.7 0.01 270);
+  --accent: oklch(0.26 0.007 270);
+  --accent-foreground: oklch(0.96 0.003 270);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 13%);
+  --ring: oklch(0.75 0.14 70);
+  --destructive: oklch(0.65 0.19 25);
+
+  --signal: oklch(0.78 0.14 70);
+  --signal-foreground: oklch(0.2 0.03 60);
+  --good: oklch(0.72 0.14 155);
+  --warn: oklch(0.8 0.13 85);
+  --bad: oklch(0.68 0.18 25);
+
+  --map-ocean: oklch(0.14 0.006 270);
+  --map-land: oklch(0.22 0.007 270);
+  --map-border: oklch(0.3 0.008 270);
+  --map-graticule: oklch(0.19 0.006 270);
+}
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-destructive: var(--destructive);
+  --color-signal: var(--signal);
+  --color-signal-foreground: var(--signal-foreground);
+  --color-good: var(--good);
+  --color-warn: var(--warn);
+  --color-bad: var(--bad);
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  html {
+    color-scheme: light;
+  }
+  html.dark {
+    color-scheme: dark;
+  }
+  body {
+    @apply bg-background text-foreground antialiased;
+    font-feature-settings: "ss01", "cv11";
+  }
+}
+
+/* Airport markers are DOM elements owned by MapLibre, styled here. */
+.airport-marker {
+  @apply flex items-center gap-1.5 cursor-pointer select-none;
+}
+.airport-marker__dot {
+  @apply size-2.5 rounded-full border-2 border-background bg-foreground/70 shadow-sm transition-transform duration-200;
+}
+.airport-marker__code {
+  @apply rounded-sm bg-background/85 px-1 font-mono text-[10px] font-medium leading-4 text-foreground/80 backdrop-blur-sm transition-colors;
+}
+.airport-marker:hover .airport-marker__dot,
+.airport-marker:focus-visible .airport-marker__dot {
+  @apply scale-125 bg-signal;
+}
+.airport-marker:focus-visible {
+  @apply outline-none;
+}
+.airport-marker:focus-visible .airport-marker__code {
+  @apply ring-2 ring-ring;
+}
+.airport-marker[data-state="selected"] .airport-marker__dot {
+  @apply size-3.5 bg-signal ring-4 ring-signal/30;
+}
+.airport-marker[data-state="selected"] .airport-marker__code {
+  @apply bg-signal text-signal-foreground;
+}
+.airport-marker[data-state="destination"] .airport-marker__dot {
+  @apply bg-signal;
+}
+.airport-marker[data-state="muted"] {
+  @apply opacity-40;
+}
+
+.maplibregl-ctrl-attrib {
+  @apply !bg-background/70 !text-muted-foreground;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .airport-marker__dot {
+    transition: none;
+  }
+}
+
+/* At low zoom only the focused airports show their code, to avoid clutter. */
+[data-labels="focus"]
+  .airport-marker:not([data-state="selected"]):not(:hover):not(:focus-visible)
+  .airport-marker__code {
+  display: none;
+}
+[data-labels="all"] .airport-marker[data-state="muted"] .airport-marker__code {
+  display: none;
+}

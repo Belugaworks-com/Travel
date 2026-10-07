@@ -1,10 +1,17 @@
 #!/bin/bash
-# Prepares Claude Code cloud sessions: installs playwright-cli and points it at
-# the container's preinstalled Chromium (the CLI defaults to Google Chrome).
+# Prepares Claude Code cloud sessions: installs the app's npm dependencies and
+# playwright-cli, and points playwright-cli at the container's preinstalled
+# Chromium (it defaults to Google Chrome).
 set -euo pipefail
 
 if [ "${CLAUDE_CODE_REMOTE:-}" != "true" ]; then
   exit 0
+fi
+
+cd "${CLAUDE_PROJECT_DIR:-$(pwd)}"
+
+if [ -f package.json ]; then
+  npm install --no-audit --no-fund >&2
 fi
 
 if ! command -v playwright-cli >/dev/null 2>&1; then
