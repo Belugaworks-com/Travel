@@ -22,6 +22,17 @@ Open http://localhost:3000.
 | `npm run lint`      | ESLint                          |
 | `npm run typecheck` | TypeScript                      |
 
+## Deploying (Vercel)
+
+1. On vercel.com, **Add New → Project**, import this GitHub repository.
+2. Add environment variables: `SITE_PASSWORD` (required), and
+   `SERPAPI_API_KEY` / `AVIATIONSTACK_API_KEY` for live data.
+3. Deploy. The browser asks for the username (`skyplan`, or `SITE_USERNAME`)
+   and password once.
+
+The password gate (`src/proxy.ts`) protects pages and API routes so the paid
+APIs can't be used by anyone who finds the URL.
+
 ## Data sources
 
 Without API keys the app runs entirely on a built-in sample network (37
