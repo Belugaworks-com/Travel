@@ -91,6 +91,9 @@ export function sampleFareQuote(
  * only returns the total, so taxes are estimated per segment from the route
  * model and the remainder is treated as base fare (what staff discounts apply to).
  */
+/** Departure fees added per extra leg when a connection can't be modelled. */
+const CONNECTION_FEE = 35;
+
 export function splitFare(
   total: number,
   segments: { from: string; to: string; airline: string }[],
@@ -99,10 +102,22 @@ export function splitFare(
 ): FareQuote {
   let governmentTaxes = 0;
   let carrierSurcharge = 0;
-  for (const s of segments) {
-    const q = sampleFareQuote(s.from, s.to, cabin, date, s.airline);
-    governmentTaxes += q.governmentTaxes;
-    carrierSurcharge += q.carrierSurcharge;
+  if (segments.every((s) => getAirport(s.from) && getAirport(s.to))) {
+    for (const s of segments) {
+      const q = sampleFareQuote(s.from, s.to, cabin, date, s.airline);
+      governmentTaxes += q.governmentTaxes;
+      carrierSurcharge += q.carrierSurcharge;
+    }
+  } else if (segments.length > 0) {
+    // A connection outside SkyPlan's airport list: estimate from the
+    // origin–destination pair, plus departure fees for each extra leg.
+    const first = segments[0];
+    const last = segments[segments.length - 1];
+    if (getAirport(first.from) && getAirport(last.to)) {
+      const q = sampleFareQuote(first.from, last.to, cabin, date, first.airline);
+      governmentTaxes = q.governmentTaxes + CONNECTION_FEE * (segments.length - 1);
+      carrierSurcharge = q.carrierSurcharge;
+    }
   }
   // Never let estimated taxes exceed the price itself.
   const scale = Math.min(1, (total * 0.85) / Math.max(1, governmentTaxes + carrierSurcharge));

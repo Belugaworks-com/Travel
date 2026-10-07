@@ -1,7 +1,6 @@
 import "server-only";
 
 import type { FlightSearchQuery } from "@/lib/api/schemas";
-import { isKnownAirport } from "@/lib/data/airports";
 import { getAirline, getConnectingHubs, getOperations } from "@/lib/data/network";
 import {
   classifyFare,
@@ -98,14 +97,11 @@ function normalizeSerp(body: SerpResponse, cabin: Cabin, date: Date): FlightSear
       currency: "USD",
       fare: splitFare(
         it.price!,
-        it.flights
-          .map((f) => ({
-            from: f.departure_airport.id,
-            to: f.arrival_airport.id,
-            airline: f.flight_number.split(" ")[0],
-          }))
-          // Airports outside SkyPlan's network can't be priced; skip their taxes.
-          .filter((s) => isKnownAirport(s.from) && isKnownAirport(s.to)),
+        it.flights.map((f) => ({
+          from: f.departure_airport.id,
+          to: f.arrival_airport.id,
+          airline: f.flight_number.split(" ")[0],
+        })),
         cabin,
         date,
       ),
