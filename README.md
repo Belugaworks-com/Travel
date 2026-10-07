@@ -31,7 +31,7 @@ those numbers appear.
 | Data                         | With a key                       | Without                     |
 | ---------------------------- | -------------------------------- | --------------------------- |
 | Flight prices, price level   | SerpApi Google Flights engine    | Sample fare model           |
-| Operating carriers per route | Aviationstack routes             | Sample network              |
+| Operating carriers per route | Aviationstack flights (cached 1 day) | Sample network          |
 | Load factors, standby odds   | Always modelled estimates        | Same                        |
 | Cabin layouts                | Typical configuration per type   | Same                        |
 | Basemap                      | Bundled Natural Earth countries (no tile server) |             |

@@ -1,5 +1,7 @@
 import "server-only";
 
+import { cacheLife } from "next/cache";
+
 import { getAircraft } from "@/lib/data/aircraft";
 import { getAirport } from "@/lib/data/airports";
 import {
@@ -47,36 +49,58 @@ interface LiveCarrier {
   flightNumber: string;
 }
 
+interface AviationstackFlight {
+  airline?: { iata?: string | null; name?: string | null } | null;
+  flight?: {
+    iata?: string | null;
+    codeshared?: { airline_iata?: string; airline_name?: string; flight_iata?: string } | null;
+  } | null;
+}
+
+const titleCase = (s: string) => s.replace(/\b\w/g, (c) => c.toUpperCase());
+
 /**
- * Operating carriers from Aviationstack's routes endpoint. Returns null when
- * no key is configured or the request fails, so callers fall back to sample.
+ * Airlines operating a route, from Aviationstack's flights endpoint (the
+ * routes endpoint needs a paid plan). Codeshares are folded into the
+ * operating carrier. Cached for a day because the free plan allows about 100
+ * requests a month; throws on failure so errors are never cached.
  */
-async function fetchLiveCarriers(from: string, to: string): Promise<LiveCarrier[] | null> {
-  const key = process.env.AVIATIONSTACK_API_KEY;
-  if (!key) return null;
-  const url = new URL("https://api.aviationstack.com/v1/routes");
-  url.searchParams.set("access_key", key);
+async function fetchOperatingCarriers(from: string, to: string): Promise<LiveCarrier[]> {
+  "use cache";
+  cacheLife("days");
+
+  const url = new URL("https://api.aviationstack.com/v1/flights");
+  url.searchParams.set("access_key", process.env.AVIATIONSTACK_API_KEY ?? "");
   url.searchParams.set("dep_iata", from);
   url.searchParams.set("arr_iata", to);
+  url.searchParams.set("limit", "100");
+  const res = await fetch(url, { signal: AbortSignal.timeout(10_000) });
+  const body = (await res.json()) as { data?: AviationstackFlight[]; error?: { code?: string } };
+  if (!res.ok || body.error || !body.data) {
+    throw new Error(`Aviationstack: ${body.error?.code ?? res.status}`);
+  }
+
+  const carriers = new Map<string, LiveCarrier & { flights: number }>();
+  for (const row of body.data) {
+    const cs = row.flight?.codeshared;
+    const code = (cs?.airline_iata ?? row.airline?.iata ?? "").toUpperCase();
+    if (!/^[A-Z0-9]{2}$/.test(code)) continue;
+    const name = cs?.airline_name ?? row.airline?.name ?? code;
+    const flightNumber = (cs?.flight_iata ?? row.flight?.iata ?? code).toUpperCase();
+    const entry = carriers.get(code);
+    if (entry) entry.flights++;
+    else carriers.set(code, { airline: code, airlineName: titleCase(name), flightNumber, flights: 1 });
+  }
+  return [...carriers.values()]
+    .sort((a, b) => b.flights - a.flights)
+    .map(({ airline, airlineName, flightNumber }) => ({ airline, airlineName, flightNumber }));
+}
+
+/** Live carriers, or null without a key or when the request fails. */
+async function fetchLiveCarriers(from: string, to: string): Promise<LiveCarrier[] | null> {
+  if (!process.env.AVIATIONSTACK_API_KEY) return null;
   try {
-    const res = await fetch(url, { signal: AbortSignal.timeout(8000) });
-    if (!res.ok) return null;
-    const body = (await res.json()) as {
-      data?: { airline?: { iata?: string; name?: string }; flight?: { number?: string } }[];
-    };
-    const seen = new Set<string>();
-    const carriers: LiveCarrier[] = [];
-    for (const row of body.data ?? []) {
-      const code = row.airline?.iata;
-      if (!code || seen.has(code)) continue;
-      seen.add(code);
-      carriers.push({
-        airline: code,
-        airlineName: row.airline?.name ?? code,
-        flightNumber: `${code}${row.flight?.number ?? ""}`,
-      });
-    }
-    return carriers;
+    return await fetchOperatingCarriers(from, to);
   } catch {
     return null;
   }
@@ -114,7 +138,7 @@ export async function getRouteInfo(from: string, to: string, date: Date): Promis
       : null;
     return {
       airline: c.airline,
-      airlineName: c.airlineName,
+      airlineName: getAirline(c.airline)?.name ?? c.airlineName,
       alliance: getAirline(c.airline)?.alliance ?? "none",
       flightNumber: c.flightNumber,
       aircraft: c.aircraft ?? "Not published",
